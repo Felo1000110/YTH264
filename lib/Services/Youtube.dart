@@ -1,14 +1,20 @@
 import 'package:YT_H264/Services/QueueObject.dart';
+import 'package:remove_emoji/remove_emoji.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:http/http.dart' as http;
 
 class YoutubeService {
   final _serv = YoutubeExplode();
   Future<YoutubeQueueObject> getVidInfo(String uri) async {
+    // if original string contains with music. remove it
+    if (uri.contains('music.')) {
+      uri = uri.replaceFirst('music.', '');
+    }
     // String -> URI Obj
     Uri original = Uri.parse(uri);
     // Disect URI into Hostname and Path
-    var cleanUri = Uri.https(original.host, original.path);
+    var cleanUri =
+        Uri.https(original.host, original.path, original.queryParameters);
     // Get Video ID and Info
     var video = await _serv.videos.get(cleanUri);
     // Get All Available Streams
@@ -33,9 +39,23 @@ class YoutubeService {
     if (uri.contains("shorts") || !isImage) {
       imgUri = "https://img.youtube.com/vi/${video.id}/0.jpg";
     }
+    // Make a title that doesn't have un-allowed (& Emojis) characters for filenames
+    String validName = video.title
+        .replaceAll('/', '')
+        .replaceAll(r'\', '')
+        .replaceAll('*', '')
+        .replaceAll('?', '')
+        .replaceAll('<', '')
+        .replaceAll('>', '')
+        .replaceAll('|', '')
+        .replaceAll(':', '')
+        .replaceAll('"', '');
+    print(validName + " Before ");
+    validName = RemoveEmoji().removemoji(validName);
     // Return a queue obj with all the extracted info
     return YoutubeQueueObject(
         title: video.title,
+        validTitle: validName,
         author: video.author,
         videoOnlyStreams: vids,
         bestAudio: bestAudio,

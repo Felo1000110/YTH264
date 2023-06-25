@@ -4,9 +4,6 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 class DownloadOptions extends StatefulWidget {
   final YoutubeQueueObject? ytObj;
-  int downloadType = 0;
-  int videoQuality = 0;
-  int audioQuality = 0;
 
   DownloadOptions({super.key, required this.ytObj});
 
@@ -16,6 +13,9 @@ class DownloadOptions extends StatefulWidget {
 
 class _DownloadOptionsState extends State<DownloadOptions>
     with TickerProviderStateMixin {
+  int downloadType = 0;
+  int videoQuality = 0;
+  int audioQuality = 0;
   late TabController downloadTypeController;
   late TabController videoQualityController;
   late TabController audioQualityController;
@@ -28,7 +28,7 @@ class _DownloadOptionsState extends State<DownloadOptions>
   }
 
   Widget getVideoQualties() {
-    if ((widget.downloadType == 0 || widget.downloadType == 1) &&
+    if ((downloadType == 0 || downloadType == 1) &&
         widget.ytObj!.videoOnlyStreams.length >= 3) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,7 +39,7 @@ class _DownloadOptionsState extends State<DownloadOptions>
           const Text('Video Quality',
               style: TextStyle(
                   color: Colors.black,
-                  fontFamily: 'Helvetica',
+                  fontFamily: 'Lato',
                   fontWeight: FontWeight.bold,
                   fontSize: 27)),
           Padding(
@@ -69,7 +69,7 @@ class _DownloadOptionsState extends State<DownloadOptions>
                       }
                       widget.ytObj!.selectedStream = info;
                     });
-                    print(widget.videoQuality);
+                    print(videoQuality);
                   },
                   unselectedLabelColor: Colors.black,
                   labelColor: Colors.white,
@@ -148,7 +148,7 @@ class _DownloadOptionsState extends State<DownloadOptions>
                               maxLines: 2,
                               style: const TextStyle(
                                   color: Colors.black,
-                                  fontFamily: 'Helvetica',
+                                  fontFamily: 'Lato',
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15)),
                           const SizedBox(
@@ -170,7 +170,7 @@ class _DownloadOptionsState extends State<DownloadOptions>
                       const Text('Download Type',
                           style: TextStyle(
                               color: Colors.black,
-                              fontFamily: 'Helvetica',
+                              fontFamily: 'Lato',
                               fontWeight: FontWeight.bold,
                               fontSize: 27)),
                       Padding(
@@ -184,11 +184,11 @@ class _DownloadOptionsState extends State<DownloadOptions>
                               controller: downloadTypeController,
                               onTap: (value) {
                                 setState(() {
-                                  widget.downloadType = value;
+                                  downloadType = value;
                                   widget.ytObj!.type =
-                                      DownloadType.values[widget.downloadType];
+                                      DownloadType.values[downloadType];
                                 });
-                                print(widget.downloadType);
+                                print(downloadType);
                               },
                               unselectedLabelColor: Colors.black,
                               labelColor: Colors.white,
@@ -234,7 +234,7 @@ class _DownloadOptionsState extends State<DownloadOptions>
                               child: Text('Add to Queue',
                                   style: TextStyle(
                                       color: Colors.white,
-                                      fontFamily: 'Helvetica',
+                                      fontFamily: 'Lato',
                                       fontWeight: FontWeight.bold,
                                       fontSize: 17)),
                             ),

@@ -6,7 +6,6 @@ import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:ffmpeg_kit_flutter_full/ffmpeg_kit.dart';
-import 'package:remove_emoji/remove_emoji.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../Widgets/QueueWidget.dart';
@@ -21,27 +20,11 @@ class DownloadManager {
     rc.listen(((message) {
       Isolate.exit();
     }));
-
-    // TODO: Android Permissions
     print('Starting Download');
     final yt = YoutubeExplode();
     double progress = 0;
-    String? vidDir, audioDir;
-    String title = args['ytObj'].title as String;
-    title = title
-        .replaceAll(r'\', '')
-        .replaceAll('/', '')
-        .replaceAll('*', '')
-        .replaceAll('?', '')
-        .replaceAll('"', '')
-        .replaceAll('<', '')
-        .replaceAll('>', '')
-        .replaceAll('|', '')
-        .replaceAll(':', '')
-        .replaceAll("'", '')
-        .replaceAll('"', '');
-    title = RemoveEmoji().removemoji(title);
-
+    String title = args['ytObj'].validTitle as String;
+    // print(title);
     if (args['ytObj'].downloadType == DownloadType.VideoOnly ||
         args['ytObj'].downloadType == DownloadType.Muxed) {
       try {
@@ -57,7 +40,6 @@ class DownloadManager {
         }
         fileDir =
             '${directory!.path}/$title.${args['ytObj'].stream.container.name}';
-        vidDir = fileDir;
         File vidFile = await File(fileDir).create(recursive: true);
         var fileStream = vidFile.openWrite(mode: FileMode.writeOnlyAppend);
         await for (var bytes in stream) {
@@ -85,15 +67,11 @@ class DownloadManager {
         var count = 0;
         String? fileDir;
         Directory? directory;
-        if (args['ytObj'].downloadType == DownloadType.AudioOnly) {
-          directory = args['downloads'];
-        } else {
-          directory = args['temp'];
-        }
+
+        directory = args['temp'];
 
         fileDir =
             '${directory!.path}/$title.${args['ytObj'].bestAudio.container.name}';
-        audioDir = fileDir;
         File audFile = await File(fileDir).create(recursive: true);
         var fileStream =
             await audFile.openWrite(mode: FileMode.writeOnlyAppend);
@@ -123,93 +101,111 @@ class DownloadManager {
     Isolate.exit();
   }
 
-  static void convertToMp3(
-      Directory? downloads,
-      String title,
-      YoutubeQueueObject ytobj,
-      Function callBack,
-      Directory temp,
-      BuildContext context) async {
-    title = RemoveEmoji().removemoji(title);
-    title = title
-        .replaceAll(r'\', '')
-        .replaceAll('/', '')
-        .replaceAll('*', '')
-        .replaceAll('?', '')
-        .replaceAll('"', '')
-        .replaceAll('<', '')
-        .replaceAll('>', '')
-        .replaceAll('|', '')
-        .replaceAll(':', '')
-        .replaceAll("'", '')
-        .replaceAll('"', '');
-    String imgPath = '${temp.path}/${title}.jpg';
+  static void convertToMp3(Directory? downloads, YoutubeQueueObject ytobj,
+      Function callBack, Directory temp, BuildContext context) async {
+    String imgPath = '${temp.path}/${ytobj.validTitle}.jpg';
+
     File? imgfile = await getImageAsFile(ytobj.thumbnail, imgPath);
+
     String audioDir =
-        '"${downloads!.path}/$title.${ytobj.bestAudio.container.name}"';
-    String command = '';
+        "${temp.path}/${ytobj.validTitle}.${ytobj.bestAudio.container.name}";
+
+    String author = ytobj.author;
+
+    String title = ytobj.title;
+
+    String out = '${downloads!.path}/${ytobj.validTitle}.mp3';
+
+    List<String> args = [];
 
     if (imgfile != null) {
-      command =
-          '-y -i $audioDir -i "$imgPath" -map 0 -map 1 -metadata artist="${ytobj.author}" -metadata title="${ytobj.title}" "${downloads.path}/$title.mp3"';
+      args = [
+        "-y",
+        '-i',
+        '$audioDir',
+        '-i',
+        '$imgPath',
+        '-map',
+        '0',
+        '-map',
+        '1',
+        '-metadata',
+        'artist=$author',
+        '-metadata',
+        'title=$title',
+        '$out'
+      ];
     } else {
-      command = '-y -i $audioDir "${downloads.path}/$title.mp3"';
+      args = ['-y', '-i', '$audioDir', '$out'];
     }
 
-    print(command);
-    FFmpegKit.executeAsync(command, (session) async {
+    print(args);
+    FFmpegKit.executeWithArgumentsAsync(args, (session) async {
       final returnCode = await session.getReturnCode();
+
       if (!ReturnCode.isSuccess(returnCode) &&
           !ReturnCode.isCancel(returnCode)) {
         GlobalMethods.snackBarError(session.getOutput().toString(), context);
+        clean(ytobj, downloads, temp, true);
       }
-      File old = File(audioDir.replaceAll("'", ''));
-      try {
-        await old.delete();
-      } catch (e) {}
-      if (imgfile != null) {
-        await imgfile.delete();
-      }
-      // print(session.)
+
+      // try {
+      //   await old.delete();
+      // } catch (e) {}
+      // if (imgfile != null) {
+      //   await imgfile.delete();
+      // }
+
+      clean(ytobj, downloads, temp, false);
+
       callBack();
+
       return;
     }, ((log) {
       print(log.getMessage());
     }));
   }
 
-  static void mergeIntoMp4(Directory? temps, Directory? downloads, String title,
-      Function callBack, BuildContext context) {
-    title = RemoveEmoji().removemoji(title);
-    title = title
-        .replaceAll(r'\', '')
-        .replaceAll('/', '')
-        .replaceAll('*', '')
-        .replaceAll('?', '')
-        .replaceAll('"', '')
-        .replaceAll('<', '')
-        .replaceAll('>', '')
-        .replaceAll('|', '')
-        .replaceAll(':', '')
-        .replaceAll("'", '')
-        .replaceAll('"', '');
-    String audioDir = "'${temps!.path}/$title.webm'";
-    String videoDir = "'${temps.path}/$title.mp4'";
-    String outDir = "'${downloads!.path}/$title.mp4'";
-    FFmpegKit.executeAsync(
-        '-y -i $videoDir -i $audioDir -c:v copy -c:a aac $outDir',
-        (session) async {
+  static void mergeIntoMp4(Directory? temps, Directory? downloads,
+      YoutubeQueueObject ytobj, Function callBack, BuildContext context) {
+    String audioDir =
+        "${temps!.path}/${ytobj.validTitle}.${ytobj.bestAudio.container.name}";
+
+    String videoDir = "${temps.path}/${ytobj.validTitle}.mp4";
+
+    String outDir = "${downloads!.path}/${ytobj.validTitle}.mp4";
+
+    print("${temps.path}");
+
+    List<String> args = [
+      '-y',
+      '-i',
+      '$videoDir',
+      '-i',
+      '$audioDir',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '$outDir'
+    ];
+
+    FFmpegKit.executeWithArgumentsAsync(args, (session) async {
       final returnCode = await session.getReturnCode();
+
       if (!ReturnCode.isSuccess(returnCode) &&
           !ReturnCode.isCancel(returnCode)) {
         String? msg = await session.getOutput();
         GlobalMethods.snackBarError(msg!, context);
+        clean(ytobj, downloads, temps, true);
       }
+
       print(session.getOutput());
-      File oldAudio = File(audioDir.replaceAll("'", ''));
-      await oldAudio.delete();
-      File oldVideo = File(videoDir.replaceAll("'", ''));
-      await oldVideo.delete();
+      // File oldAudio = File(audioDir);
+      // await oldAudio.delete();
+      // File oldVideo = File(videoDir);
+      // await oldVideo.delete();
+      clean(ytobj, downloads, temps, false);
       callBack();
     }, ((log) {
       print(log.getMessage());
@@ -231,55 +227,58 @@ class DownloadManager {
 
   static void stop(DownloadStatus ds, YoutubeQueueObject queueObject,
       Directory downloads, Directory temps, SendPort? stopper) async {
-    String fixedTitle = queueObject.title
-        .replaceAll(r'\', '')
-        .replaceAll('/', '')
-        .replaceAll('*', '')
-        .replaceAll('?', '')
-        .replaceAll('"', '')
-        .replaceAll('<', '')
-        .replaceAll('>', '')
-        .replaceAll('|', '')
-        .replaceAll(':', '')
-        .replaceAll("'", '')
-        .replaceAll('"', '');
     if (ds == DownloadStatus.downloading) {
       stopper!.send(null);
     } else {
       FFmpegKit.cancel();
     }
+    clean(queueObject, downloads, temps, true);
+  }
+
+  static void clean(YoutubeQueueObject queueObject, Directory downloads,
+      Directory temps, bool cleanOutFile) async {
     if (queueObject.downloadType == DownloadType.AudioOnly) {
-      String path = '${downloads.path}/$fixedTitle.webm';
+      String path =
+          '${downloads.path}/${queueObject.validTitle}.${queueObject.bestAudio.container.name}';
       File file = File(path);
 
-      String outpath = '${downloads.path}/$fixedTitle.mp3';
+      String imgPath = '${temps.path}/${queueObject.validTitle}.jpg';
+      File imgFile = File(imgPath);
+
+      String outpath = '${downloads.path}/${queueObject.validTitle}.mp3';
       File outfile = File(outpath);
 
       try {
         await file.delete();
-        await outfile.delete();
+        await imgFile.delete();
+        if (cleanOutFile) {
+          await outfile.delete();
+        }
       } catch (e) {}
-    } else if (queueObject.downloadType == DownloadType.VideoOnly) {
-      String path = '${downloads.path}/$fixedTitle.mp4';
+    } else if (queueObject.downloadType == DownloadType.VideoOnly &&
+        cleanOutFile) {
+      String path = '${downloads.path}/${queueObject.validTitle}.mp4';
       File file = File(path);
 
       try {
         await file.delete();
       } catch (e) {}
     } else {
-      String pathToVid = '${temps.path}/$fixedTitle.mp4';
+      String pathToVid = '${temps.path}/${queueObject.validTitle}.mp4';
       File vidfile = File(pathToVid);
 
-      String pathToAud = '${temps.path}/$fixedTitle.webm';
+      String pathToAud = '${temps.path}/${queueObject.validTitle}.webm';
       File audfile = File(pathToAud);
 
-      String pathToOut = '${downloads.path}/$fixedTitle.mp4';
+      String pathToOut = '${downloads.path}/${queueObject.validTitle}.mp4';
       File outfile = File(pathToOut);
 
       try {
         await vidfile.delete();
         await audfile.delete();
-        await outfile.delete();
+        if (cleanOutFile) {
+          await outfile.delete();
+        }
       } catch (e) {}
     }
   }
