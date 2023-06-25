@@ -11,36 +11,44 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../Widgets/QueueWidget.dart';
 import 'QueueObject.dart';
 
+// Class responsible for handling the video download process
 class DownloadManager {
+  // Isolate Function
   @pragma('vm:entry-point')
   static void donwloadVideoFromYoutube(Map<String, dynamic> args) async {
+    // Port to send download status to UI (QueueWidget)
     final SendPort sd = args['port'];
+    // A port to be sent to QueueWidget for it to be able to kill the Isolate when stopping the download
     ReceivePort rc = ReceivePort();
     sd.send([rc.sendPort]);
     rc.listen(((message) {
       Isolate.exit();
     }));
-    print('Starting Download');
+
     final yt = YoutubeExplode();
     double progress = 0;
+    // Filename
     String title = args['ytObj'].validTitle as String;
-    // print(title);
+    // Condition to download the video if the download type is Video only or Video+Audio
     if (args['ytObj'].downloadType == DownloadType.VideoOnly ||
         args['ytObj'].downloadType == DownloadType.Muxed) {
       try {
         var stream = yt.videos.streamsClient.get(args['ytObj'].stream);
-        final size = args['ytObj'].stream.size.totalBytes;
-        var count = 0;
+        final size =
+            args['ytObj'].stream.size.totalBytes; // for calculating percentage
+        var count = 0; // number of bytes downloaded for calculating percentage
+
         String? fileDir;
-        Directory? directory;
-        if (args['ytObj'].downloadType == DownloadType.VideoOnly) {
-          directory = args['downloads'];
-        } else {
-          directory = args['temp'];
-        }
+        // Condition to put the video in the downloads folder if download type is Video only
+        // and in temp if it is Video+Audio as it is not the final product and still needs conversion
+        Directory? directory =
+            args['ytObj'].downloadType == DownloadType.VideoOnly
+                ? args['downloads']
+                : args['temp'];
         fileDir =
             '${directory!.path}/$title.${args['ytObj'].stream.container.name}';
         File vidFile = await File(fileDir).create(recursive: true);
+
         var fileStream = vidFile.openWrite(mode: FileMode.writeOnlyAppend);
         await for (var bytes in stream) {
           fileStream.add(bytes);
@@ -58,21 +66,24 @@ class DownloadManager {
       }
     }
 
+    // Condition to download the audio if the download type is Audio only or Video+Audio
     if (args['ytObj'].downloadType == DownloadType.AudioOnly ||
         args['ytObj'].downloadType == DownloadType.Muxed) {
       try {
         final audioStream =
             yt.videos.streamsClient.get(args['ytObj'].bestAudio);
-        final size = args['ytObj'].bestAudio.size.totalBytes;
-        var count = 0;
-        String? fileDir;
-        Directory? directory;
+        final size = args['ytObj']
+            .bestAudio
+            .size
+            .totalBytes; // for calculating percentage
+        var count = 0; // number of bytes downloaded for calculating percentage
 
-        directory = args['temp'];
-
-        fileDir =
+        // Directory is always temp because conversion is still needed
+        Directory? directory = args['temp'];
+        String? fileDir =
             '${directory!.path}/$title.${args['ytObj'].bestAudio.container.name}';
         File audFile = await File(fileDir).create(recursive: true);
+
         var fileStream =
             await audFile.openWrite(mode: FileMode.writeOnlyAppend);
         await for (var bytes in audioStream) {
@@ -92,7 +103,7 @@ class DownloadManager {
     }
 
     yt.close();
-
+    // Condition to determine if further conversion is needed
     if (args['ytObj'].downloadType == DownloadType.VideoOnly) {
       sd.send([DownloadStatus.done, 100.0]);
     } else {
@@ -103,21 +114,21 @@ class DownloadManager {
 
   static void convertToMp3(Directory? downloads, YoutubeQueueObject ytobj,
       Function callBack, Directory temp, BuildContext context) async {
+    // Code to get the image of the vid thumbnail for the mp3 metadata photo
     String imgPath = '${temp.path}/${ytobj.validTitle}.jpg';
-
     File? imgfile = await getImageAsFile(ytobj.thumbnail, imgPath);
-
     String audioDir =
         "${temp.path}/${ytobj.validTitle}.${ytobj.bestAudio.container.name}";
 
+    // More metadata
     String author = ytobj.author;
-
     String title = ytobj.title;
 
+    // Output Mp3 path
     String out = '${downloads!.path}/${ytobj.validTitle}.mp3';
-
     List<String> args = [];
 
+    // if for any reason the thumbnail could not be gotten include less metadata
     if (imgfile != null) {
       args = [
         "-y",
@@ -149,15 +160,10 @@ class DownloadManager {
         clean(ytobj, downloads, temp, true);
       }
 
-      // try {
-      //   await old.delete();
-      // } catch (e) {}
-      // if (imgfile != null) {
-      //   await imgfile.delete();
-      // }
-
+      // Clean function is used to delete the unconverted audio webm file
       clean(ytobj, downloads, temp, false);
 
+      // Refreshes the QueueWidget
       callBack();
 
       return;
@@ -170,12 +176,8 @@ class DownloadManager {
       YoutubeQueueObject ytobj, Function callBack, BuildContext context) {
     String audioDir =
         "${temps!.path}/${ytobj.validTitle}.${ytobj.bestAudio.container.name}";
-
     String videoDir = "${temps.path}/${ytobj.validTitle}.mp4";
-
     String outDir = "${downloads!.path}/${ytobj.validTitle}.mp4";
-
-    print("${temps.path}");
 
     List<String> args = [
       '-y',
@@ -201,17 +203,18 @@ class DownloadManager {
       }
 
       print(session.getOutput());
-      // File oldAudio = File(audioDir);
-      // await oldAudio.delete();
-      // File oldVideo = File(videoDir);
-      // await oldVideo.delete();
+
+      // Clean function is used to delete the separate Audio and Video files
       clean(ytobj, downloads, temps, false);
+
+      // Refreshes the QueueWidget
       callBack();
     }, ((log) {
       print(log.getMessage());
     }));
   }
 
+  // Function to download the thumbnail image
   static Future<File?> getImageAsFile(String uri, String path) async {
     final file = File(path);
     try {
@@ -225,36 +228,47 @@ class DownloadManager {
     }
   }
 
+  // Function to stop the download
   static void stop(DownloadStatus ds, YoutubeQueueObject queueObject,
       Directory downloads, Directory temps, SendPort? stopper) async {
+    // if the file is still being downloaded send anything through the stopper port to kill the isolate
+    // else ask FFmpeg to stop every ongoing operation (might be a problem)
     if (ds == DownloadStatus.downloading) {
       stopper!.send(null);
     } else {
       FFmpegKit.cancel();
     }
+    // then delete the files downloaded
     clean(queueObject, downloads, temps, true);
   }
 
   static void clean(YoutubeQueueObject queueObject, Directory downloads,
       Directory temps, bool cleanOutFile) async {
+    // if download type is audio only then delete the following:
+    // - The webm audio file
+    // - The Image file used for mp3 metadata
+    // - The output mp3 file (if requested when stopping the download)
     if (queueObject.downloadType == DownloadType.AudioOnly) {
       String path =
-          '${downloads.path}/${queueObject.validTitle}.${queueObject.bestAudio.container.name}';
+          '${temps.path}/${queueObject.validTitle}.${queueObject.bestAudio.container.name}';
       File file = File(path);
 
       String imgPath = '${temps.path}/${queueObject.validTitle}.jpg';
       File imgFile = File(imgPath);
 
-      String outpath = '${downloads.path}/${queueObject.validTitle}.mp3';
-      File outfile = File(outpath);
+      String outPath = '${downloads.path}/${queueObject.validTitle}.mp3';
+      File outFile = File(outPath);
 
       try {
         await file.delete();
         await imgFile.delete();
         if (cleanOutFile) {
-          await outfile.delete();
+          await outFile.delete();
         }
       } catch (e) {}
+      // if download type is video only
+      // and output file deletion is requested (Because video only downloads a single output file)
+      // then delete it
     } else if (queueObject.downloadType == DownloadType.VideoOnly &&
         cleanOutFile) {
       String path = '${downloads.path}/${queueObject.validTitle}.mp4';
@@ -263,6 +277,10 @@ class DownloadManager {
       try {
         await file.delete();
       } catch (e) {}
+      // Else (Video+Audio) delete the following:
+      // - The audioless mp4 video file
+      // - The webm audio file
+      // - The output mp4 (Video+Audio) file (if requested when stopping the download)
     } else {
       String pathToVid = '${temps.path}/${queueObject.validTitle}.mp4';
       File vidfile = File(pathToVid);
