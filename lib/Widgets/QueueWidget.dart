@@ -323,15 +323,14 @@ class QueueWidgetState extends State<QueueWidget>
                                         if (!isDownloading) {
                                           setState(() {
                                             isDownloading = true;
+                                            downloadStatus =
+                                                DownloadStatus.downloading;
                                             _controller.forward();
                                           });
                                           download();
                                         } else {
                                           setState(() {
                                             isDownloading = false;
-                                            // downloadButtonWidth = 75;
-                                            downloadStatus =
-                                                DownloadStatus.waiting;
                                           });
                                           rc!.close();
                                           DownloadManager.stop(
@@ -341,6 +340,10 @@ class QueueWidgetState extends State<QueueWidget>
                                               temps!,
                                               stopPort,
                                               conversionSession);
+                                          setState(() {
+                                            downloadStatus =
+                                                DownloadStatus.waiting;
+                                          });
                                           _controller.reverse();
                                         }
                                       },
